@@ -42,6 +42,9 @@ yt_audio.*
 # Python virtual environment
 backend/venv/
 
+# Claude Code local settings
+.claude/
+
 # vercel
 .vercel
 

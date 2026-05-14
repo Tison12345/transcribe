@@ -2,13 +2,6 @@
 
 import { useState, useRef } from "react";
 
-const STEPS = [
-  "Preparing audio…",
-  "Sending to transcription engine…",
-  "Transcribing speech…",
-  "Done!",
-];
-
 const ACCEPTED = [
   "audio/mpeg", "audio/wav", "audio/mp4", "audio/m4a",
   "audio/flac", "audio/ogg", "audio/webm", "video/mp4", "video/webm",
@@ -20,17 +13,16 @@ export default function UploadBox({ onTranscript }) {
   const [url, setUrl] = useState("");
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [progressMsg, setProgressMsg] = useState("");
   const [error, setError] = useState("");
   const inputRef = useRef(null);
 
   function validateFile(f) {
-    if (!ACCEPTED.includes(f.type) && !f.name.match(/\.(mp3|wav|m4a|flac|ogg|webm|mp4)$/i)) {
+    if (!ACCEPTED.includes(f.type) && !f.name.match(/\.(mp3|wav|m4a|flac|ogg|webm|mp4)$/i))
       return "Unsupported file type. Use MP3, WAV, M4A, FLAC, OGG, or WebM.";
-    }
-    if (f.size > MAX_MB * 1024 * 1024) {
+    if (f.size > MAX_MB * 1024 * 1024)
       return `File exceeds ${MAX_MB} MB limit.`;
-    }
     return null;
   }
 
@@ -50,34 +42,71 @@ export default function UploadBox({ onTranscript }) {
   }
 
   async function handleSubmit() {
-    if (!file && !url.trim()) {
-      setError("Please upload a file or paste a YouTube URL.");
-      return;
-    }
+    if (!file && !url.trim()) { setError("Please upload a file or paste a YouTube URL."); return; }
     setError("");
     setLoading(true);
-    setStep(0);
+    setProgress(0);
+    setProgressMsg("Starting…");
 
+    const sourceName = file ? file.name : url.trim();
     const formData = new FormData();
     if (file) formData.append("file", file);
     else formData.append("url", url.trim());
 
     try {
-      setStep(1);
       const res = await fetch("/api/transcribe", { method: "POST", body: formData });
-      setStep(2);
-      const data = await res.json();
 
-      if (!res.ok || data.error) {
-        setError(data.error || "Transcription failed.");
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Request failed");
+        setLoading(false);
         return;
       }
 
-      setStep(3);
-      onTranscript(data.transcript);
-    } catch {
-      setError("Network error. Is the server running?");
-    } finally {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const part of parts) {
+          if (!part.trim()) continue;
+          const lines = part.split("\n");
+          const eventType = lines.find(l => l.startsWith("event:"))?.slice(7).trim() ?? "message";
+          const dataLine = lines.find(l => l.startsWith("data:"));
+          if (!dataLine) continue;
+
+          let data;
+          try { data = JSON.parse(dataLine.slice(5).trim()); } catch { continue; }
+
+          if (eventType === "progress") {
+            setProgress(data.pct);
+            setProgressMsg(data.msg);
+          } else if (eventType === "result") {
+            setProgress(100);
+            setProgressMsg("Done!");
+            onTranscript(data.segments, sourceName);
+            setTimeout(() => {
+              setLoading(false);
+              setProgress(0);
+              setProgressMsg("");
+              setFile(null);
+              setUrl("");
+            }, 800);
+          } else if (eventType === "error") {
+            setError(data.message);
+            setLoading(false);
+          }
+        }
+      }
+    } catch (err) {
+      setError("Network error: " + err.message);
       setLoading(false);
     }
   }
@@ -161,7 +190,7 @@ export default function UploadBox({ onTranscript }) {
           value={url}
           disabled={loading}
           onChange={(e) => { setUrl(e.target.value); setFile(null); setError(""); }}
-          className="w-full rounded-lg px-3 py-2 text-sm font-mono outline-none transition-colors"
+          className="w-full rounded-lg px-3 py-2 text-sm font-mono outline-none"
           style={{
             background: "var(--bg)",
             border: `1px solid ${url ? "var(--accent)" : "var(--border)"}`,
@@ -180,16 +209,24 @@ export default function UploadBox({ onTranscript }) {
 
       {/* Progress */}
       {loading && (
-        <div className="flex flex-col gap-2">
-          <div className="w-full rounded-full h-1.5 overflow-hidden" style={{ background: "var(--border)" }}>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+              {progressMsg}
+            </span>
+            <span className="text-sm font-bold font-mono" style={{ color: progress === 100 ? "var(--teal)" : "var(--accent)" }}>
+              {progress}%
+            </span>
+          </div>
+          <div className="w-full rounded-full h-2 overflow-hidden" style={{ background: "var(--border)" }}>
             <div
               className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${(step / (STEPS.length - 1)) * 100}%`, background: "var(--accent)" }}
+              style={{
+                width: `${progress}%`,
+                background: progress === 100 ? "var(--teal)" : "var(--accent)",
+              }}
             />
           </div>
-          <p className="text-xs text-center font-mono" style={{ color: "var(--text-muted)" }}>
-            {STEPS[step]}
-          </p>
         </div>
       )}
 
@@ -197,7 +234,7 @@ export default function UploadBox({ onTranscript }) {
       <button
         onClick={handleSubmit}
         disabled={!canSubmit}
-        className="w-full py-2.5 rounded-lg text-sm font-semibold transition-opacity"
+        className="w-full py-2.5 rounded-lg text-sm font-semibold"
         style={{
           background: canSubmit ? "var(--text)" : "var(--border)",
           color: canSubmit ? "white" : "var(--text-muted)",
@@ -205,7 +242,7 @@ export default function UploadBox({ onTranscript }) {
           opacity: loading ? 0.7 : 1,
         }}
       >
-        {loading ? "Transcribing…" : "Transcribe →"}
+        {loading ? `Transcribing… ${progress}%` : "Transcribe →"}
       </button>
     </div>
   );
