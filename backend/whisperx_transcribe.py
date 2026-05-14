@@ -4,19 +4,12 @@ import json
 import os
 import yt_dlp
 import torch
-import torchaudio
 
 
 def progress(pct, msg):
     sys.stderr.write(f"PROGRESS:{pct}:{msg}\n")
     sys.stderr.flush()
 
-
-def load_audio_tensor(audio_path):
-    waveform, sample_rate = torchaudio.load(audio_path)
-    if waveform.shape[0] > 1:
-        waveform = torch.mean(waveform, dim=0, keepdim=True)
-    return {"waveform": waveform, "sample_rate": sample_rate}
 
 
 def download_youtube(url):
@@ -74,6 +67,7 @@ def main():
         sys.exit(1)
 
     audio_input = sys.argv[1]
+    language_arg = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] not in ("", "auto") else None
     device = "cpu"
 
     if audio_input.startswith("http"):
@@ -96,8 +90,9 @@ def main():
     progress(20, "Loading transcription model...")
     model = whisperx.load_model("base", device=device, compute_type="int8")
 
-    progress(35, "Transcribing speech...")
-    result = model.transcribe(audio_array)
+    lang_label = language_arg if language_arg else "auto"
+    progress(35, f"Transcribing speech ({lang_label})...")
+    result = model.transcribe(audio_array, language=language_arg)
 
     language = result.get("language", "en")
 
@@ -111,24 +106,60 @@ def main():
     hf_token = os.environ.get("HF_TOKEN")
     diarized = False
     if hf_token:
-        progress(75, "Identifying speakers...")
+        progress(75, "Loading speaker ID model...")
         try:
-            audio_dict = load_audio_tensor(audio_path)
-            try:
-                from whisperx.diarize import DiarizationPipeline  # type: ignore[import-untyped]
-                diarize_model = DiarizationPipeline(token=hf_token, device=device)
-            except (ImportError, TypeError):
-                diarize_model = whisperx.DiarizationPipeline(use_auth_token=hf_token, device=device)  # type: ignore[attr-defined]
+            import threading
+            from whisperx.diarize import DiarizationPipeline  # type: ignore[import-untyped]
 
-            try:
-                diarize_segments = diarize_model(audio_dict)
-            except Exception:
-                diarize_segments = diarize_model(audio_path)
+            diarize_model = None
+            for model_name in ["pyannote/speaker-diarization-3.1", "pyannote/speaker-diarization-community-1"]:
+                try:
+                    diarize_model = DiarizationPipeline(model_name=model_name, token=hf_token, device=device)
+                    break
+                except Exception as e:
+                    err_str = str(e)
+                    if "403" in err_str or "GatedRepo" in err_str or "gated" in err_str.lower():
+                        sys.stderr.write(f"DIARIZE_GATED:{model_name}\n")
+                    continue
 
-            result = whisperx.assign_word_speakers(diarize_segments, result)
+            if diarize_model is None:
+                raise RuntimeError(
+                    "Speaker diarization models are gated. "
+                    "Visit https://huggingface.co/pyannote/speaker-diarization-3.1 "
+                    "and https://huggingface.co/pyannote/speaker-diarization-community-1 "
+                    "while logged in to accept the terms, then retry."
+                )
+
+            progress(78, "Identifying speakers (this can take a few minutes)...")
+
+            # Run diarization in a thread so we can send heartbeat progress
+            cur_pct = [78]
+            diarize_result = [None]
+            diarize_error = [None]
+
+            def run_diarize():
+                try:
+                    diarize_result[0] = diarize_model(audio_array)
+                except Exception as e:
+                    diarize_error[0] = e
+
+            t = threading.Thread(target=run_diarize, daemon=True)
+            t.start()
+            while t.is_alive():
+                t.join(timeout=8)
+                if t.is_alive() and cur_pct[0] < 92:
+                    cur_pct[0] += 2
+                    progress(cur_pct[0], "Identifying speakers...")
+
+            if diarize_error[0]:
+                raise diarize_error[0]
+
+            result = whisperx.assign_word_speakers(diarize_result[0], result)
             diarized = True
         except Exception as e:
             sys.stderr.write(f"Diarization skipped: {e}\n")
+            if "gated" in str(e).lower() or "403" in str(e) or "GatedRepo" in str(e):
+                progress(80, "Speaker ID needs HuggingFace access — see README")
 
     progress(95, "Building transcript...")
     segments = []

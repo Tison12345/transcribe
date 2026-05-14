@@ -77,6 +77,44 @@ export default function TranscriptViewer({ transcript }) {
     download(srt, "transcript.srt", "text/plain");
   }
 
+  async function exportPDF() {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF();
+    let y = 20;
+    doc.setFontSize(14);
+    doc.text("Transcript", 14, y);
+    y += 10;
+    doc.setFontSize(10);
+    for (const s of transcript) {
+      const line = `[${formatTime(s.start)}] ${s.speaker || "Speaker 1"}: ${s.text.trim()}`;
+      const lines = doc.splitTextToSize(line, 182);
+      if (y + lines.length * 6 > 280) { doc.addPage(); y = 20; }
+      doc.text(lines, 14, y);
+      y += lines.length * 6 + 2;
+    }
+    doc.save("transcript.pdf");
+  }
+
+  async function exportDOCX() {
+    const { Document, Paragraph, TextRun, Packer } = await import("docx");
+    const paragraphs = transcript.map((s) =>
+      new Paragraph({
+        children: [
+          new TextRun({ text: `[${formatTime(s.start)}] ${s.speaker || "Speaker 1"}: `, bold: true }),
+          new TextRun({ text: s.text.trim() }),
+        ],
+        spacing: { after: 120 },
+      })
+    );
+    const doc = new Document({ sections: [{ children: paragraphs }] });
+    const blob = await Packer.toBlob(doc);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "transcript.docx";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   const totalWords = transcript.reduce((n, s) => n + s.text.trim().split(/\s+/).length, 0);
   const duration = transcript.length ? transcript[transcript.length - 1].end : 0;
 
@@ -147,7 +185,7 @@ export default function TranscriptViewer({ transcript }) {
             <p className="text-xs uppercase tracking-wider font-medium px-2 mb-1" style={{ color: "var(--text-muted)" }}>
               Export
             </p>
-            {[["TXT", exportTXT], ["JSON", exportJSON], ["SRT", exportSRT]].map(([lbl, fn]) => (
+            {[["TXT", exportTXT], ["JSON", exportJSON], ["SRT", exportSRT], ["PDF", exportPDF], ["DOCX", exportDOCX]].map(([lbl, fn]) => (
               <button
                 key={lbl}
                 onClick={fn}

@@ -17,6 +17,7 @@ export async function POST(req) {
   const formData = await req.formData();
   const file = formData.get("file");
   const url = formData.get("url");
+  const language = (formData.get("language") || "").trim();
 
   let inputArg;
   let tempFile = null;
@@ -43,7 +44,13 @@ export async function POST(req) {
         if (tempFile && existsSync(tempFile)) unlink(tempFile).catch(() => {});
       };
 
-      const python = spawn(getPythonPath(), [scriptPath, inputArg]);
+      const pythonArgs = [scriptPath, inputArg];
+      if (language) pythonArgs.push(language);
+      const python = spawn(getPythonPath(), pythonArgs);
+
+      const ping = setInterval(() => {
+        try { controller.enqueue(encoder.encode(": ping\n\n")); } catch {}
+      }, 4000);
       let stdout = "";
       let stderrBuf = "";
 
@@ -54,12 +61,13 @@ export async function POST(req) {
         const lines = stderrBuf.split("\n");
         stderrBuf = lines.pop();
         for (const line of lines) {
-          const m = line.match(/^PROGRESS:(\d+):(.+)$/);
-          if (m) send("progress", { pct: parseInt(m[1]), msg: m[2] });
+          const m = line.trim().match(/^PROGRESS:(\d+):(.+)$/);
+          if (m) send("progress", { pct: parseInt(m[1]), msg: m[2].trim() });
         }
       });
 
       python.on("close", () => {
+        clearInterval(ping);
         cleanup();
         try {
           const start = stdout.indexOf("{");
@@ -78,6 +86,7 @@ export async function POST(req) {
       });
 
       python.on("error", (err) => {
+        clearInterval(ping);
         cleanup();
         send("error", { message: `Failed to start Python: ${err.message}` });
         controller.close();

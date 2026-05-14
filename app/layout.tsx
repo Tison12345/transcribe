@@ -7,7 +7,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "VoiceScript — Speaker-Aware Transcription",
+  title: "UraiAI — Speaker-Aware Transcription",
   description: "Upload audio or paste a YouTube link to generate a speaker-labeled transcript with timestamps.",
 };
 

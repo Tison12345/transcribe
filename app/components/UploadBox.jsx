@@ -8,9 +8,27 @@ const ACCEPTED = [
 ];
 const MAX_MB = 200;
 
+const LANGUAGES = [
+  { value: "auto", label: "Auto Detect" },
+  { value: "en", label: "English" },
+  { value: "ta", label: "Tamil" },
+  { value: "hi", label: "Hindi" },
+  { value: "te", label: "Telugu" },
+  { value: "kn", label: "Kannada" },
+  { value: "ml", label: "Malayalam" },
+  { value: "mr", label: "Marathi" },
+  { value: "fr", label: "French" },
+  { value: "es", label: "Spanish" },
+  { value: "de", label: "German" },
+  { value: "zh", label: "Chinese" },
+  { value: "ja", label: "Japanese" },
+  { value: "ar", label: "Arabic" },
+];
+
 export default function UploadBox({ onTranscript }) {
   const [file, setFile] = useState(null);
   const [url, setUrl] = useState("");
+  const [language, setLanguage] = useState("auto");
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -52,6 +70,7 @@ export default function UploadBox({ onTranscript }) {
     const formData = new FormData();
     if (file) formData.append("file", file);
     else formData.append("url", url.trim());
+    formData.append("language", language);
 
     try {
       const res = await fetch("/api/transcribe", { method: "POST", body: formData });
@@ -197,6 +216,35 @@ export default function UploadBox({ onTranscript }) {
             color: "var(--text)",
           }}
         />
+      </div>
+
+      {/* Language selector */}
+      <div>
+        <label className="text-xs font-medium uppercase tracking-wider mb-1 block"
+          style={{ color: "var(--text-muted)" }}>
+          Language
+        </label>
+        <select
+          value={language}
+          disabled={loading}
+          onChange={(e) => setLanguage(e.target.value)}
+          className="w-full rounded-lg px-3 py-2 text-sm outline-none appearance-none"
+          style={{
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            color: "var(--text)",
+            cursor: loading ? "not-allowed" : "pointer",
+          }}
+        >
+          {LANGUAGES.map((l) => (
+            <option key={l.value} value={l.value}>{l.label}</option>
+          ))}
+        </select>
+        {language === "auto" && (
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            Auto detect works well for most files. For YouTube in regional languages, pick the language manually.
+          </p>
+        )}
       </div>
 
       {/* Error */}
