@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f8f8f6;
+  --surface: #ffffff;
+  --border: #e5e5e0;
+  --text: #111110;
+  --text-muted: #6b6b63;
+  --accent: #5b5bf6;
+  --accent-bg: #eeeeff;
+  --teal: #2db89a;
+  --teal-bg: #e4f7f3;
+  --rose: #e8536b;
+  --rose-bg: #feeaed;
+
+  /* speaker colors — index 0–5 */
+  --sp-0: #5b5bf6;
+  --sp-1: #e8a238;
+  --sp-2: #2db89a;
+  --sp-3: #e8536b;
+  --sp-4: #9b59b6;
+  --sp-5: #e67e22;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+}
