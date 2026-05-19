@@ -2,13 +2,40 @@
 
 import { useState } from "react";
 import UploadBox from "./components/UploadBox";
+import RecordBox from "./components/RecordBox";
 import TranscriptViewer from "./components/TranscriptViewer";
 import HistorySidebar from "./components/HistorySidebar";
 import { useHistory } from "./hooks/useHistory";
 
+const TABS = [
+  {
+    id: "upload",
+    label: "Upload / YouTube",
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+        <path d="M12 16V8m0 0l-3 3m3-3l3 3M20 16.7A5 5 0 0017 7h-1.26A8 8 0 104 15.25"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
+    id: "record",
+    label: "Record",
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"
+          stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+];
+
 export default function Home() {
   const [transcript, setTranscript] = useState(null);
   const [activeId, setActiveId] = useState(null);
+  const [tab, setTab] = useState("upload");
   const { history, addEntry, removeEntry } = useHistory();
 
   function onTranscript(segments, sourceName) {
@@ -39,11 +66,38 @@ export default function Home() {
               Speaker-Aware Transcription
             </h1>
             <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>
-              Upload an audio file or paste a YouTube URL — get a timestamped, speaker-labeled transcript.
+              Upload a file, paste a YouTube URL, or record live — get a timestamped, speaker-labeled transcript.
             </p>
           </div>
 
-          <UploadBox onTranscript={onTranscript} />
+          {/* Tab switcher */}
+          <div
+            className="flex rounded-xl p-1 gap-1"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            {TABS.map((t) => {
+              const active = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all"
+                  style={{
+                    background: active ? "var(--bg)" : "transparent",
+                    color: active ? "var(--text)" : "var(--text-muted)",
+                    border: active ? "1px solid var(--border)" : "1px solid transparent",
+                    boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                  }}
+                >
+                  {t.icon}
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {tab === "upload" && <UploadBox onTranscript={onTranscript} />}
+          {tab === "record" && <RecordBox onTranscript={onTranscript} />}
 
           {transcript && <TranscriptViewer transcript={transcript} />}
 
